@@ -1,0 +1,167 @@
+apiVersion: v1
+kind: Template
+metadata:
+  creationTimestamp: null
+  name: sso-init
+objects:
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    creationTimestamp: null
+    generation: 1
+    labels:
+      application: sso
+      template: sso72-x509-https
+      xpaas: 1.4.14
+    name: sso
+    ownerReferences:
+    - apiVersion: template.openshift.io/v1
+      blockOwnerDeletion: true
+      kind: TemplateInstance
+      name: ce6948b4-7e80-478f-b219-798aa985baf1
+      uid: d21b36ca-91cb-11e8-ba46-000c29e7543c
+  spec:
+    replicas: 1
+    selector:
+      deploymentConfig: sso
+    strategy:
+      activeDeadlineSeconds: 21600
+      recreateParams:
+        timeoutSeconds: 600
+      resources: {}
+      type: Recreate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          application: sso
+          deploymentConfig: sso
+        name: sso
+      spec:
+        containers:
+        - env:
+          - name: DB_MIN_POOL_SIZE
+          - name: DB_MAX_POOL_SIZE
+          - name: DB_TX_ISOLATION
+          - name: JGROUPS_PING_PROTOCOL
+            value: openshift.DNS_PING
+          - name: OPENSHIFT_DNS_PING_SERVICE_NAME
+            value: sso-ping
+          - name: OPENSHIFT_DNS_PING_SERVICE_PORT
+            value: "8888"
+          - name: X509_CA_BUNDLE
+            value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+          - name: JGROUPS_CLUSTER_PASSWORD
+            value: meh
+          - name: SSO_ADMIN_USERNAME
+            value: admin
+          - name: SSO_ADMIN_PASSWORD
+            value: admin
+          - name: SSO_REALM
+            value: demorealm
+          - name: SSO_SERVICE_USERNAME
+            value: ssosvc
+          - name: SSO_SERVICE_PASSWORD
+            value: ssosvc
+          image: registry.access.redhat.com/redhat-sso-7/sso72-openshift@sha256:36fe10011291c8455987b5d8a1891cc8c0c4cd0e8d4db34e06b35a757daf9fdc
+          imagePullPolicy: Always
+          livenessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - /opt/eap/bin/livenessProbe.sh
+            failureThreshold: 3
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          name: sso
+          ports:
+          - containerPort: 8778
+            name: jolokia
+            protocol: TCP
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          - containerPort: 8443
+            name: https
+            protocol: TCP
+          - containerPort: 8888
+            name: ping
+            protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - /opt/eap/bin/readinessProbe.sh
+            failureThreshold: 3
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            limits:
+              memory: 1Gi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/eap/themes/rh-sso
+            name: vol-theme
+          - mountPath: /etc/x509/https
+            name: sso-x509-https-volume
+            readOnly: true
+          - mountPath: /etc/x509/jgroups
+            name: sso-x509-jgroups-volume
+            readOnly: true
+        dnsPolicy: ClusterFirst
+        initContainers:
+        - command:
+          - sh
+          - -c
+          - curl -L -k -o theme.zip https://github.com/liveaverage/keycloak-custom-theme/archive/master.zip
+            && unzip theme.zip -d /opt/eap/themes/rh-sso && mv /opt/eap/themes/rh-sso/*/*
+            /opt/eap/themes/rh-sso/
+          image: registry.access.redhat.com/redhat-sso-7/sso72-openshift@sha256:36fe10011291c8455987b5d8a1891cc8c0c4cd0e8d4db34e06b35a757daf9fdc
+          imagePullPolicy: IfNotPresent
+          name: init-theme
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/eap/themes/rh-sso
+            name: vol-theme
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 75
+        volumes:
+        - name: sso-x509-https-volume
+          secret:
+            defaultMode: 420
+            secretName: sso-x509-https-secret
+        - name: sso-x509-jgroups-volume
+          secret:
+            defaultMode: 420
+            secretName: sso-x509-jgroups-secret
+        - emptyDir: {}
+          name: vol-theme
+    test: false
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - sso
+        from:
+          kind: ImageStreamTag
+          name: redhat-sso72-openshift:1.2
+          namespace: openshift
+      type: ImageChange
+    - type: ConfigChange
+  status:
+    availableReplicas: 0
+    latestVersion: 0
+    observedGeneration: 0
+    replicas: 0
+    unavailableReplicas: 0
+    updatedReplicas: 0
